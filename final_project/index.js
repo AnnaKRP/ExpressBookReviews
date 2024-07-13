@@ -6,42 +6,65 @@ const genl_routes = require('./router/general.js').general;
 
 const app = express();
 
-const SECRET_KEY = "your_secret_key"; // Replace with your secret key
-
 app.use(express.json());
 
-app.use("/customer", session({
+app.use(session({
     secret: "fingerprint_customer",
     resave: true,
     saveUninitialized: true
 }));
 
-// Middleware to authenticate token
-app.use("/customer/auth/*", function auth(req, res, next) {
-    const token = req.headers['authorization'];
-    if (!token) return res.status(403).send('Token is required');
+// Login endpoint
+app.post("/customer/login", (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) {
+        return res.status(400).json({ message: "Username and password are required" });
+    }
 
-    jwt.verify(token, SECRET_KEY, (err, decoded) => {
-        if (err) return res.status(401).send('Invalid token');
+    // Placeholder authentication logic
+    if (username === "user" && password === "pass") {
+        // Generate JWT access token
+        let accessToken = jwt.sign({ username }, 'access', { expiresIn: '1h' });
+
+        // Store access token in session
+        req.session.accessToken = accessToken;
+
+        return res.status(200).json({ message: "User successfully logged in", token: accessToken });
+    } else {
+        return res.status(401).json({ message: "Invalid username or password" });
+    }
+});
+
+// Middleware for user authentication
+const authenticateUser = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+
+    if (!authHeader) {
+        return res.status(403).json({ message: "A token is required for authentication" });
+    }
+
+    const token = authHeader.split(' ')[1]; // Bearer <token>
+
+    jwt.verify(token, "access", (err, decoded) => {
+        if (err) {
+            return res.status(401).json({ message: "Invalid token" });
+        }
         req.user = decoded;
         next();
     });
-});
+};
 
-// Login route to generate token
-app.post('/login', (req, res) => {
-    // Replace this with your actual login logic
-    const { username, password } = req.body;
-    if (username === "user" && password === "pass") { // Replace with real user validation
-        const token = jwt.sign({ username }, SECRET_KEY, { expiresIn: '1h' });
-        return res.json({ token });
-    }
-    res.status(401).send('Invalid credentials');
-});
+// Apply authentication middleware to routes requiring authentication
+app.use("/customer/auth/*", authenticateUser);
 
-const PORT = 5000;
+// Middleware to check user authentication
+app.use("/user", authenticateUser);
 
+// Mount authenticated routes for customers
 app.use("/customer", customer_routes);
+
+// Mount general routes
 app.use("/", genl_routes);
 
+const PORT = 5002;
 app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
